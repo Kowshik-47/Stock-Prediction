@@ -132,4 +132,4 @@ else:
         st.error(f"Error making prediction: {str(e)}")
 
 # Create a WSGI callable for gunicorn
-server = st.server.server
+server = st.server
