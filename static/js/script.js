@@ -38,5 +38,5 @@ document.getElementById('predictForm').addEventListener('submit', async function
 });
 
 // Optional: Set min/max dates for the date input
-document.getElementById('dateInput').setAttribute('min', '2020-01-01'); // Adjust based on stock.csv
-document.getElementById('dateInput').setAttribute('max', '2025-12-31'); // Adjust based on stock.csv
+document.getElementById('dateInput').setAttribute('min', '2022-01-01'); // Adjust based on stock.csv
+document.getElementById('dateInput').setAttribute('max', '2022-12-31'); // Adjust based on stock.csv
