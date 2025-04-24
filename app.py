@@ -1,21 +1,23 @@
+from flask import Flask, render_template, request, jsonify
 import pandas as pd
-import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
 import pickle
 from datetime import datetime
 import os
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for plotting
+import matplotlib.pyplot as plt
+import io
+import base64
 
-# Set page configuration
-st.set_page_config(page_title="Stock Price Prediction", layout="wide")
+app = Flask(__name__)
 
-# Define file paths relative to the project root
+# Define file paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.pkl')
 DATA_PATH = os.path.join(BASE_DIR, 'data', 'stock.csv')
 
-# Load the pre-trained model and metadata
-@st.cache_resource
+# Load model and metadata
 def load_model():
     try:
         with open(MODEL_PATH, 'rb') as f:
@@ -29,18 +31,15 @@ def load_model():
             saved_data.get('feature_columns', ['days', 'open', 'high', 'low', 'volume', 'lag1', 'lag2', 'ma7'])
         )
     except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
-        return None, None, None, None, None, None
+        return None, None, None, None, None, None, str(e)
 
-# Load and preprocess historical data
-@st.cache_data
+# Load and preprocess data
 def load_data():
     try:
         data = pd.read_csv(DATA_PATH)
         data['date'] = pd.to_datetime(data['date'], errors='coerce')
         if data['date'].isnull().any():
-            raise ValueError("Some dates could not be parsed in stock.csv.")
-        # Filter for single stock (close prices between $13 and $25)
+            raise ValueError("Some dates could not be parsed in stock.csv")
         data = data[(data['close'] >= 13) & (data['close'] <= 25)].copy()
         start_date = datetime(2022, 1, 3)
         end_date = datetime(2022, 12, 30)
@@ -51,85 +50,81 @@ def load_data():
         data['ma7'] = data['close'].rolling(window=7).mean()
         return data
     except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
-        return None
+        return None, str(e)
 
 # Load model and data
 model, start_date, r_squared, mae, rmse, feature_columns = load_model()
 data = load_data()
 
-# Streamlit app
-st.title("Stock Price Prediction")
-st.write("Enter a date in 2022 to predict the stock closing price using a pre-trained Random Forest model.")
-
-if model is None or start_date is None or data is None or feature_columns is None:
-    st.error("Failed to initialize the model or data. Please check the model.pkl and stock.csv files.")
-else:
-    # Date input
-    st.subheader("Select a Date for Prediction")
-    input_date = st.date_input(
-        "Choose a date",
-        min_value=start_date,
-        max_value=datetime(2022, 12, 31),
-        value=datetime(2022, 12, 31)
-    )
+# Generate plot
+def generate_plot(input_date, prediction, data):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(data['date'], data['close'], label='Historical Prices', color='blue')
+    ax.scatter([input_date], [prediction], color='green', s=100, label='Prediction')
+    ax.set_title(f'Stock Closing Price Prediction (R² = {r_squared:.3f})')
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Closing Price ($)')
+    ax.legend()
+    ax.grid(True)
+    plt.xticks(rotation=45)
+    fig.tight_layout()
     
-    # Process prediction
-    try:
-        input_date = pd.to_datetime(input_date)
-        days = (input_date - start_date).days
-        
-        # Find the closest previous date in the data
-        prev_data = data[data['date'] <= input_date].tail(1)
-        if prev_data.empty:
-            st.error("No historical data available before the selected date.")
-        else:
-            prev_row = prev_data.iloc[0]
-            
-            # Prepare features for prediction
-            input_features = []
-            for col in feature_columns:
-                if col == 'days':
-                    input_features.append(days)
-                elif col in ['open', 'high', 'low', 'volume', 'lag1', 'lag2', 'ma7']:
-                    input_features.append(prev_row[col] if col in prev_row else prev_row['close'])
-                else:
-                    raise ValueError(f"Unknown feature: {col}")
-            
-            input_features = np.array([input_features])
-            
-            # Make prediction
-            prediction = model.predict(input_features)[0]
-            
-            # Display prediction and metrics
-            st.subheader("Prediction Result")
-            st.markdown(f"**Predicted Closing Price on {input_date.strftime('%Y-%m-%d')}:** ${prediction:.2f}")
-            st.markdown(f"**Model R² Score:** {r_squared:.3f}")
-            st.markdown(f"**Mean Absolute Error (MAE):** {mae:.2f}")
-            st.markdown(f"**Root Mean Squared Error (RMSE):** {rmse:.2f}")
-            
-            # Plot historical data and prediction
-            st.subheader("Historical Data and Prediction")
-            fig, ax = plt.subplots(figsize=(10, 6))
-            
-            # Plot historical data
-            ax.plot(data['date'], data['close'], label='Historical Prices', color='blue')
-            
-            # Plot prediction point
-            ax.scatter([input_date], [prediction], color='green', s=100, label='Prediction')
-            
-            ax.set_title(f'Stock Closing Price Prediction (R² = {r_squared:.3f})')
-            ax.set_xlabel('Date')
-            ax.set_ylabel('Closing Price ($)')
-            ax.legend()
-            ax.grid(True)
-            plt.xticks(rotation=45)
-            fig.tight_layout()
-            
-            st.pyplot(fig)
-            
-    except Exception as e:
-        st.error(f"Error making prediction: {str(e)}")
+    # Save plot to bytes
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    plot_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+    plt.close(fig)
+    return plot_data
 
-# Create a WSGI callable for gunicorn
-server = st.server
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if model is None or data is None or isinstance(data, tuple):
+        error = "Failed to load model or data" if model is None else data[1]
+        return jsonify({'error': error}), 500
+    
+    try:
+        input_date_str = request.form['date']
+        input_date = pd.to_datetime(input_date_str)
+        if input_date < start_date or input_date > datetime(2022, 12, 31):
+            return jsonify({'error': 'Date must be in 2022'}), 400
+        
+        days = (input_date - start_date).days
+        prev_data = data[data['date'] <= input_date].tail(1)
+        
+        if prev_data.empty:
+            return jsonify({'error': 'No historical data available before the selected date'}), 400
+        
+        prev_row = prev_data.iloc[0]
+        input_features = []
+        for col in feature_columns:
+            if col == 'days':
+                input_features.append(days)
+            elif col in ['open', 'high', 'low', 'volume', 'lag1', 'lag2', 'ma7']:
+                input_features.append(prev_row[col] if col in prev_row else prev_row['close'])
+            else:
+                return jsonify({'error': f'Unknown feature: {col}'}), 500
+        
+        input_features = np.array([input_features])
+        prediction = model.predict(input_features)[0]
+        
+        # Generate plot
+        plot_data = generate_plot(input_date, prediction, data)
+        
+        return jsonify({
+            'prediction': round(prediction, 2),
+            'r_squared': round(r_squared, 3),
+            'mae': round(mae, 2),
+            'rmse': round(rmse, 2),
+            'plot': plot_data
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
