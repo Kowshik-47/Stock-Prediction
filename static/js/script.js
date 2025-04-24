@@ -1,4 +1,4 @@
-document.getElementById('predictForm').addEventListener('submit', async function(event) {
+document.getElementById('prediction-Form').addEventListener('submit', async function(event) {
     event.preventDefault();
     
     const dateInput = document.getElementById('dateInput').value;
