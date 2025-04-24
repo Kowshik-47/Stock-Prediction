@@ -13,17 +13,23 @@ MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.pkl')
 
 # Load and preprocess data
 def load_and_preprocess_data():
-    data = pd.read_csv(DATA_PATH)
-    data['date'] = pd.to_datetime(data['date'], errors='coerce')
-    data = data[(data['close'] >= 13) & (data['close'] <= 25)].copy()
-    start_date = datetime(2022, 1, 3)
-    end_date = datetime(2022, 12, 30)
-    data = data[(data['date'] >= start_date) & (data['date'] <= end_date)].copy()
-    data['days'] = (data['date'] - start_date).dt.days
-    data['lag1'] = data['close'].shift(1)
-    data['lag2'] = data['close'].shift(2)
-    data['ma7'] = data['close'].rolling(window=7).mean()
-    return data, start_date
+    try:
+        data = pd.read_csv(DATA_PATH)
+        data['date'] = pd.to_datetime(data['date'], errors='coerce')
+        if data['date'].isnull().any():
+            raise ValueError("Some dates could not be parsed in stock.csv")
+        # Filter for close prices between $13 and $25
+        data = data[(data['close'] >= 13) & (data['close'] <= 25)].copy()
+        start_date = datetime(2022, 1, 3)
+        end_date = datetime(2022, 12, 30)
+        data = data[(data['date'] >= start_date) & (data['date'] <= end_date)].copy()
+        data['days'] = (data['date'] - start_date).dt.days
+        data['lag1'] = data['close'].shift(1)
+        data['lag2'] = data['close'].shift(2)
+        data['ma7'] = data['close'].rolling(window=7).mean()
+        return data, start_date
+    except Exception as e:
+        raise Exception(f"Error preprocessing data: {str(e)}")
 
 # Train model
 def train_model():
