@@ -31,7 +31,7 @@ def load_model():
             saved_data.get('feature_columns', ['days', 'open', 'high', 'low', 'volume', 'lag1', 'lag2', 'ma7'])
         )
     except Exception as e:
-        return None, None, None, None, None, None, str(e)
+        return None, None, None, None, None, None
 
 # Load and preprocess data
 def load_data():
