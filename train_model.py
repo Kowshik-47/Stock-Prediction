@@ -5,31 +5,42 @@ from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 import pickle
 from datetime import datetime
 import os
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Define paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DATA_PATH = os.path.join(BASE_DIR, 'data', 'stock.csv')
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'model.pkl')
 
 # Load and preprocess data
 def load_and_preprocess_data():
     try:
+        if not os.path.exists(DATA_PATH):
+            logger.error(f"Data file not found at {DATA_PATH}")
+            raise FileNotFoundError(f"Data file not found at {DATA_PATH}")
         data = pd.read_csv(DATA_PATH)
         data['date'] = pd.to_datetime(data['date'], errors='coerce')
         if data['date'].isnull().any():
+            logger.error("Some dates could not be parsed in stock.csv")
             raise ValueError("Some dates could not be parsed in stock.csv")
-        # Filter for close prices between $13 and $25
+        # Filter for close prices between $13 and $25 (optional)
         data = data[(data['close'] >= 13) & (data['close'] <= 25)].copy()
-        start_date = datetime(2022, 1, 3)
-        end_date = datetime(2022, 12, 30)
-        data = data[(data['date'] >= start_date) & (data['date'] <= end_date)].copy()
+        # Use earliest date as start_date
+        data = data.sort_values('date').copy()
+        start_date = data['date'].min()
         data['days'] = (data['date'] - start_date).dt.days
         data['lag1'] = data['close'].shift(1)
         data['lag2'] = data['close'].shift(2)
         data['ma7'] = data['close'].rolling(window=7).mean()
+        logger.info("Data loaded and preprocessed successfully")
         return data, start_date
     except Exception as e:
-        raise Exception(f"Error preprocessing data: {str(e)}")
+        logger.error(f"Error preprocessing data: {str(e)}")
+        raise
 
 # Train model
 def train_model():
@@ -73,8 +84,8 @@ def train_model():
     with open(MODEL_PATH, 'wb') as f:
         pickle.dump(saved_data, f)
     
-    print(f"Model saved to {MODEL_PATH}")
-    print(f"R²: {r_squared:.3f}, MAE: {mae:.2f}, RMSE: {rmse:.2f}")
+    logger.info(f"Model saved to {MODEL_PATH}")
+    logger.info(f"R²: {r_squared:.3f}, MAE: {mae:.2f}, RMSE: {rmse:.2f}")
 
 if __name__ == "__main__":
     train_model()
