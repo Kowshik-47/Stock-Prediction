@@ -119,16 +119,6 @@ def predict():
         # Check if input_date is within the data range
         min_date = data['date'].min()
         max_date = data['date'].max()
-
-        if input_date < min_date or input_date > max_date + pd.Timedelta(days=365):
-             logger.warning(f"Input date {input_date_str} outside available data range ({min_date} to {max_date})")
-             return jsonify({'error': f'Date must be between {min_date.date()} and one year after {max_date.date()}'}), 400
-         
-         # Ensure enough historical data for features (at least 7 days for ma7)
-         earliest_required_date = input_date - pd.Timedelta(days=7)
-         if earliest_required_date < min_date:
-             logger.warning(f"Insufficient historical data for date {input_date_str}")
-             return jsonify({'error': f'Insufficient historical data before {input_date_str}. Earliest supported date is {min_date + pd.Timedelta(days=7)}'}), 400
         
         days = (input_date - start_date).days
         prev_data = data[data['date'] <= input_date].tail(1)
